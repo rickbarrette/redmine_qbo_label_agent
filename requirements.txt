@@ -1,0 +1,5 @@
+# brother_ql fork that works with current Pillow (import name brother_ql)
+brother_ql_inventree==1.3
+pillow==13.0.0
+requests==2.34.2
+zeroconf==0.154.0

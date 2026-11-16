@@ -1,0 +1,16 @@
+# Runs the print agent on a computer on the label printer's network.
+# REDMINE_URL and AGENT_TOKEN come from Administration » Label printers in Redmine.
+services:
+  label-agent:
+    build: .
+    restart: always
+    # Host networking lets the agent find the printer on the local network (Bonjour/mDNS)
+    network_mode: host
+    environment:
+      REDMINE_URL: https://redmine.example.com
+      AGENT_TOKEN: qbl_paste-the-token-here
+      PRINTER_MODEL: QL-820NWB
+      # Optional: skip the network search and use this printer
+      # PRINTER: tcp://192.168.0.100
+      # DEBUG, INFO or WARNING
+      LOG_LEVEL: INFO
