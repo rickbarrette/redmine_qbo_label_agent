@@ -40,15 +40,39 @@ Host networking is what lets it hear the printer's announcements. Without it (e.
 
 It replaces brother_ql_web: both send to the printer's port 9100, and only one can print at a time, so they can run side by side, but there's no need to.
 
+## Receipt printers (Star)
+
+The agent also prints on a Star TSP100III receipt printer (e.g. TSP143IIILAN, 80mm): the pictures Redmine plugins send it, e.g. [redmine_qbo_tickets](https://github.com/rickbarrette/redmine_qbo_tickets)' key tickets. Add the printer in Redmine as a *Receipt printer*, and run an agent for it with:
+
+```yaml
+services:
+  receipt-agent:
+    build: https://github.com/rickbarrette/redmine_qbo_label_agent.git
+    restart: always
+    network_mode: host
+    environment:
+      REDMINE_URL: https://redmine.example.com
+      AGENT_TOKEN: qbl_paste-the-receipt-printers-token-here
+      PRINTER_TYPE: star
+      PRINTER: tcp://192.168.0.101
+      CUT: full
+```
+
+It isn't looked for on the network: give its address in `PRINTER` (reserve one for it on the router). Before each picture it asks the printer for its status (cover open, out of paper, cutter error, head too hot), and after it, waits for the printer to say everything printed. The pictures are printed as they are (576 dots wide, in Star's raster mode) and cut off.
+
+One agent prints on one printer: with a label printer and a receipt printer, put both services in one Compose file.
+
 ## Settings
 
 Variable|Default|
 ---|---|---
 `REDMINE_URL`||Redmine's address (required)
 `AGENT_TOKEN`||The printer's token from **Administration » Label printers** (required)
-`PRINTER`|found on the network|The printer, e.g. `tcp://192.168.0.100` or `192.168.0.100:9100`
-`PRINTER_MODEL`|`QL-820NWB`|The model, as [brother_ql](https://github.com/inventree/brother_ql) names it; also picks this model when the network has several printers
+`PRINTER_TYPE`|`brother_ql`|`brother_ql` (label printer) or `star` (receipt printer)
+`PRINTER`|found on the network|The printer, e.g. `tcp://192.168.0.100` or `192.168.0.100:9100` (required for a Star)
+`PRINTER_MODEL`|`QL-820NWB` (Star: `TSP143IIILAN`)|The model, as [brother_ql](https://github.com/inventree/brother_ql) names it; also picks this model when the network has several printers
 `LABEL`|`62`|The roll, as brother_ql names it (`62`: 62mm continuous)
+`CUT`|`full`|Star: `full`, `partial` or `none` (feed only)
 `LOG_LEVEL`|`INFO`|`DEBUG` logs every poll and the printer's status messages; `WARNING` only problems
 `VERIFY_SSL`|`1`|`0` to skip checking Redmine's certificate
 

@@ -109,6 +109,10 @@ class Printer:
         except OSError as error:
             raise PrinterUnreachable(f"Can't reach the printer at {self.address}: {error}") from error
 
+    def check(self):
+        """A short description of the printer's status, e.g. 'Ready, 62mm continuous'"""
+        return describe_status(self.status())
+
     @staticmethod
     def _read_status(sock, timeout):
         """The printer's next 32-byte status message, or None if it sends none in time"""

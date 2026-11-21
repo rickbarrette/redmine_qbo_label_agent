@@ -1,11 +1,15 @@
-"""The print agent: asks Redmine for labels every couple of seconds and prints them.
+"""The print agent: asks Redmine for print jobs every couple of seconds and prints them.
+
+It prints labels on a Brother QL label printer, or pictures (e.g. key tickets) on a Star receipt printer.
 
 Settings (environment):
   REDMINE_URL     Redmine's address, e.g. https://redmine.example.com (required)
   AGENT_TOKEN     the printer's token from Administration » Label printers (required)
-  PRINTER         the printer, e.g. tcp://192.168.0.100 (optional: found on the network when not set)
-  PRINTER_MODEL   default QL-820NWB
+  PRINTER_TYPE    brother_ql (default) or star
+  PRINTER         the printer, e.g. tcp://192.168.0.100 (Brother: found on the network when not set; Star: required)
+  PRINTER_MODEL   default QL-820NWB (Brother) or TSP143IIILAN (Star)
   LABEL           brother_ql label size, default 62 (62mm continuous)
+  CUT             Star: full (default), partial or none
   LOG_LEVEL       DEBUG, INFO (default) or WARNING
   VERIFY_SSL      0 to skip checking Redmine's certificate (default 1)
 """
@@ -16,12 +20,17 @@ import signal
 import sys
 import time
 
+import base64
+import io
+
 import requests
+from PIL import Image
 
 from . import __version__
 from .label import render
-from .printer import Printer, PrinterError, PrinterUnreachable, describe_status, discover, parse_address
+from .printer import Printer, PrinterError, PrinterUnreachable, discover, parse_address
 from .redmine import Redmine, Unauthorized
+from .star import CUTS, StarPrinter
 
 log = logging.getLogger('label_agent')
 
@@ -34,9 +43,15 @@ class Agent:
     def __init__(self, env):
         self.redmine = Redmine(env['REDMINE_URL'], env['AGENT_TOKEN'],
                                verify=env.get('VERIFY_SSL', '1') not in ('0', 'false', 'no'))
-        self.model = env.get('PRINTER_MODEL') or 'QL-820NWB'
+        self.star = (env.get('PRINTER_TYPE') or 'brother_ql').strip().lower() == 'star'
+        self.model = env.get('PRINTER_MODEL') or ('TSP143IIILAN' if self.star else 'QL-820NWB')
         self.label = env.get('LABEL') or '62'
+        self.cut = (env.get('CUT') or 'full').strip().lower()
         self.fixed_printer = env.get('PRINTER') or None
+        if self.star and self.cut not in CUTS:
+            raise ValueError(f'CUT must be one of {", ".join(CUTS)}')
+        if self.star and not self.fixed_printer:
+            raise ValueError('Set PRINTER to the receipt printer\'s address, e.g. tcp://192.168.0.101')
         self.printer = None
         self.found_model = None
         self.printer_status = 'Not found on the network yet'
@@ -52,7 +67,8 @@ class Agent:
         if self.fixed_printer:
             if not self.printer:
                 host, port = parse_address(self.fixed_printer)
-                self.printer = Printer(host, port, self.model, self.label)
+                self.printer = (StarPrinter(host, port, self.cut) if self.star
+                                else Printer(host, port, self.model, self.label))
             return self.printer
         if self.printer and not force:
             return self.printer
@@ -83,7 +99,7 @@ class Agent:
         if not printer:
             return
         try:
-            self.printer_status = describe_status(printer.status())
+            self.printer_status = printer.check()
         except PrinterUnreachable as error:
             log.warning('%s', error)
             self.printer_status = 'Not reachable'
@@ -101,13 +117,24 @@ class Agent:
             'printer_status': self.printer_status,
         }
 
-    # Labels
+    # Print jobs
 
-    def print_job(self, job):
+    def job_image(self, job):
+        """What a job prints: a picture as it came (receipt printers), or a label drawn from its lines"""
+        if job.get('image'):
+            if not self.star:
+                raise PrinterError('Pictures print on a receipt printer, and this is a label printer')
+            log.info('Printing picture %s (x%s)', job['id'], job.get('copies', 1))
+            return Image.open(io.BytesIO(base64.b64decode(job['image'])))
+        if self.star:
+            raise PrinterError('Labels print on a label printer, and this is a receipt printer')
         lines = job.get('lines') or []
         log.info('Printing label %s: %s (x%s)', job['id'], ' / '.join(lines), job.get('copies', 1))
+        return render(lines, job.get('min_length_mm', 25.4), job.get('max_length_mm', 101.6))
+
+    def print_job(self, job):
         try:
-            image = render(lines, job.get('min_length_mm', 25.4), job.get('max_length_mm', 101.6))
+            image = self.job_image(job)
             copies = max(1, min(int(job.get('copies') or 1), 10))
             printer = self.find_printer() or self.find_printer(force=True)
             if not printer:
@@ -122,11 +149,11 @@ class Agent:
                 if not printer:
                     raise
                 outcome = printer.print([image] * copies)
-            log.info('Label %s %s', job['id'], outcome)
+            log.info('Job %s %s', job['id'], outcome)
             self.printer_status = 'Ready'
             self.send_result(job['id'], True)
         except Exception as error:
-            log.error('Label %s failed: %s', job['id'], error)
+            log.error('Job %s failed: %s', job['id'], error)
             self.send_result(job['id'], False, error)
 
     def send_result(self, job_id, printed, error=None):
@@ -144,7 +171,7 @@ class Agent:
     # Main loop
 
     def run(self):
-        log.info('Label agent %s for %s', __version__, self.redmine.url)
+        log.info('Print agent %s for %s (%s)', __version__, self.redmine.url, self.model)
         wait = 2.0
         failures = 0
         while self.running:
@@ -195,7 +222,11 @@ def main():
     if missing:
         log.error('Set %s', ' and '.join(missing))
         return 2
-    agent = Agent(os.environ)
+    try:
+        agent = Agent(os.environ)
+    except ValueError as error:
+        log.error('%s', error)
+        return 2
     signal.signal(signal.SIGTERM, agent.stop)
     signal.signal(signal.SIGINT, agent.stop)
     agent.run()
