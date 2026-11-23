@@ -34,7 +34,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-The image is on Docker Hub ([barrettefab/redmine-qbo-label-agent](https://hub.docker.com/r/barrettefab/redmine-qbo-label-agent)), so nothing is built on the shop's computer. To pin a version instead of `latest`, use its tag, e.g. `barrettefab/redmine-qbo-label-agent:2026.11.1`.
+The image is on Docker Hub ([barrettefab/redmine-qbo-label-agent](https://hub.docker.com/r/barrettefab/redmine-qbo-label-agent)), so nothing is built on the shop's computer. It runs on PCs and on Raspberry Pis (64-bit or 32-bit Raspberry Pi OS, e.g. a Pi 3). To pin a version instead of `latest`, use its tag, e.g. `barrettefab/redmine-qbo-label-agent:2026.11.2`.
 
 The log says which printer it found (`Found QL-820NWB at 192.168.0.100:9100`) and each label it prints.
 
