@@ -2,7 +2,8 @@
 # REDMINE_URL and AGENT_TOKEN come from Administration » Label printers in Redmine.
 services:
   label-agent:
-    build: .
+    image: barrettefab/redmine-qbo-label-agent:latest
+    # To try local changes, build it here instead: replace image with build: .
     restart: always
     # Host networking lets the agent find the printer on the local network (Bonjour/mDNS)
     network_mode: host

@@ -16,7 +16,7 @@ In Redmine, **Administration » Label printers » New label printer** shows the 
 ```yaml
 services:
   label-agent:
-    build: https://github.com/rickbarrette/redmine_qbo_label_agent.git
+    image: barrettefab/redmine-qbo-label-agent:latest
     restart: always
     # Host networking lets the agent find the printer on the local network (Bonjour/mDNS)
     network_mode: host
@@ -34,6 +34,8 @@ docker compose up -d
 docker compose logs -f
 ```
 
+The image is on Docker Hub ([barrettefab/redmine-qbo-label-agent](https://hub.docker.com/r/barrettefab/redmine-qbo-label-agent)), so nothing is built on the shop's computer. To pin a version instead of `latest`, use its tag, e.g. `barrettefab/redmine-qbo-label-agent:2026.11.1`.
+
 The log says which printer it found (`Found QL-820NWB at 192.168.0.100:9100`) and each label it prints.
 
 Host networking is what lets it hear the printer's announcements. Without it (e.g. Docker Desktop on Windows or Mac), set `PRINTER` to the printer's address, preferably one reserved for it on the router.
@@ -47,7 +49,7 @@ The agent also prints on a Star TSP100III receipt printer (e.g. TSP143IIILAN, 80
 ```yaml
 services:
   receipt-agent:
-    build: https://github.com/rickbarrette/redmine_qbo_label_agent.git
+    image: barrettefab/redmine-qbo-label-agent:latest
     restart: always
     network_mode: host
     environment:
@@ -61,6 +63,15 @@ services:
 It isn't looked for on the network: give its address in `PRINTER` (reserve one for it on the router). Before each picture it asks the printer for its status (cover open, out of paper, cutter error, head too hot), and after it, waits for the printer to say everything printed. The pictures are printed as they are (576 dots wide, in Star's raster mode) and cut off.
 
 One agent prints on one printer: with a label printer and a receipt printer, put both services in one Compose file.
+
+## Updating
+
+```
+docker compose pull
+docker compose up -d
+```
+
+The log's first line names the version that's running (`Print agent 2026.11.1 for https://...`), and Redmine's Label printers page shows each agent's version.
 
 ## Settings
 
@@ -77,6 +88,10 @@ Variable|Default|
 `VERIFY_SSL`|`1`|`0` to skip checking Redmine's certificate
 
 How often it asks for labels, and how long labels are, are set in Redmine (the plugin's settings) and picked up within a poll.
+
+## Publishing
+
+`./publish.sh` runs the tests, builds the image and pushes it to Docker Hub tagged with its version (`__version__` in `label_agent/__init__.py`) and `latest`. It only publishes a committed version whose tag is on HEAD: bump the version, commit, `git tag <version>`, push, then publish.
 
 ## Development
 
